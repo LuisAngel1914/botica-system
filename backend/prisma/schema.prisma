@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MovementType {
+  PURCHASE_ENTRY
+  SALE_EXIT
+  MANUAL_ENTRY
+  MANUAL_EXIT
+  SALE_CANCEL
+  EXPIRED_PRODUCT
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum PurchaseStatus {
+  REGISTERED
+  CANCELLED
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  INCOME
+  EXPENSE
+}
+
+enum PaymentMethod {
+  CASH
+  YAPE
+  PLIN
+  CARD
+  TRANSFER
+  MIXED
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  roleId       Int
+  fullName     String     @db.VarChar(120)
+  email        String     @unique @db.VarChar(120)
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  role               Role                @relation(fields: [roleId], references: [id])
+  sales              Sale[]
+  purchases          Purchase[]
+  cashSessions       CashSession[]
+  cashMovements      CashMovement[]
+  inventoryMovements InventoryMovement[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@map("categories")
+}
+
+model Laboratory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(120)
+  ruc       String?  @db.VarChar(20)
+  phone     String?  @db.VarChar(30)
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@map("laboratories")
+}
+
+model Supplier {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(150)
+  ruc       String?  @unique @db.VarChar(20)
+  phone     String?  @db.VarChar(30)
+  email     String?  @db.VarChar(120)
+  address   String?
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases Purchase[]
+
+  @@map("suppliers")
+}
+
+model Product {
+  id               Int           @id @default(autoincrement())
+  categoryId       Int?
+  laboratoryId     Int?
+  code             String        @unique @db.VarChar(50)
+  barcode          String?       @unique @db.VarChar(80)
+  name             String        @db.VarChar(150)
+  activeIngredient String?       @db.VarChar(150)
+  presentation     String?       @db.VarChar(120)
+  description      String?
+  purchasePrice    Decimal       @default(0) @db.Decimal(10, 2)
+  salePrice        Decimal       @default(0) @db.Decimal(10, 2)
+  minStock         Int           @default(0)
+  status           ProductStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  laboratory         Laboratory?         @relation(fields: [laboratoryId], references: [id])
+  batches            ProductBatch[]
+  inventoryMovements InventoryMovement[]
+  saleItems          SaleItem[]
+  purchaseItems      PurchaseItem[]
+
+  @@map("products")
+}
+
+model ProductBatch {
+  id             Int      @id @default(autoincrement())
+  productId      Int
+  batchNumber    String   @db.VarChar(80)
+  expirationDate DateTime @db.Date
+  stock          Int      @default(0)
+  purchasePrice  Decimal  @default(0) @db.Decimal(10, 2)
+  salePrice      Decimal  @default(0) @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  product            Product             @relation(fields: [productId], references: [id])
+  inventoryMovements InventoryMovement[]
+  saleItems          SaleItem[]
+  purchaseItems      PurchaseItem[]
+
+  @@unique([productId, batchNumber, expirationDate])
+  @@map("product_batches")
+}
+
+model InventoryMovement {
+  id            Int          @id @default(autoincrement())
+  productId     Int
+  batchId       Int?
+  userId        Int
+  movementType  MovementType
+  quantity      Int
+  stockBefore   Int?
+  stockAfter    Int?
+  referenceType String?      @db.VarChar(80)
+  referenceId   Int?
+  reason        String?
+  createdAt     DateTime     @default(now())
+
+  product Product       @relation(fields: [productId], references: [id])
+  batch   ProductBatch? @relation(fields: [batchId], references: [id])
+  user    User          @relation(fields: [userId], references: [id])
+
+  @@map("inventory_movements")
+}
+
+model Purchase {
+  id            Int            @id @default(autoincrement())
+  supplierId    Int?
+  userId        Int
+  invoiceNumber String?        @db.VarChar(80)
+  total         Decimal        @default(0) @db.Decimal(10, 2)
+  status        PurchaseStatus @default(REGISTERED)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  supplier Supplier?      @relation(fields: [supplierId], references: [id])
+  user     User           @relation(fields: [userId], references: [id])
+  items    PurchaseItem[]
+
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         Int     @id @default(autoincrement())
+  purchaseId Int
+  productId  Int
+  batchId    Int
+  quantity   Int
+  unitCost   Decimal @db.Decimal(10, 2)
+  subtotal   Decimal @db.Decimal(10, 2)
+
+  purchase Purchase     @relation(fields: [purchaseId], references: [id])
+  product  Product      @relation(fields: [productId], references: [id])
+  batch    ProductBatch @relation(fields: [batchId], references: [id])
+
+  @@map("purchase_items")
+}
+
+model Sale {
+  id             Int           @id @default(autoincrement())
+  userId         Int
+  cashSessionId  Int?
+  total          Decimal       @default(0) @db.Decimal(10, 2)
+  discount       Decimal       @default(0) @db.Decimal(10, 2)
+  paymentMethod  PaymentMethod
+  status         SaleStatus    @default(COMPLETED)
+  cancelReason   String?
+  cancelledAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id])
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
+  items       SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id        Int     @id @default(autoincrement())
+  saleId    Int
+  productId Int
+  batchId   Int
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+  subtotal  Decimal @db.Decimal(10, 2)
+
+  sale    Sale         @relation(fields: [saleId], references: [id])
+  product Product      @relation(fields: [productId], references: [id])
+  batch   ProductBatch @relation(fields: [batchId], references: [id])
+
+  @@map("sale_items")
+}
+
+model CashSession {
+  id             Int               @id @default(autoincrement())
+  userId         Int
+  openingAmount  Decimal           @default(0) @db.Decimal(10, 2)
+  closingAmount  Decimal?          @db.Decimal(10, 2)
+  expectedAmount Decimal?          @db.Decimal(10, 2)
+  difference     Decimal?          @db.Decimal(10, 2)
+  status         CashSessionStatus @default(OPEN)
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+
+  user      User           @relation(fields: [userId], references: [id])
+  sales     Sale[]
+  movements CashMovement[]
+
+  @@map("cash_sessions")
+}
+
+model CashMovement {
+  id            Int              @id @default(autoincrement())
+  cashSessionId Int
+  userId        Int
+  type          CashMovementType
+  amount        Decimal          @db.Decimal(10, 2)
+  description   String?
+  createdAt     DateTime         @default(now())
+
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
+
+  @@map("cash_movements")
+}
+
+model ApiIntegration {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  provider  String?  @db.VarChar(100)
+  baseUrl   String?
+  apiKey    String?
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("api_integrations")
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int?
+  module      String   @db.VarChar(80)
+  action      String   @db.VarChar(80)
+  recordId    Int?
+  description String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
