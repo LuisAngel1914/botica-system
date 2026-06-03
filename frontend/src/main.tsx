@@ -367,6 +367,322 @@ function App() {
 
   const currentSection =
     navItems.find((item) => item.key === activeSection) || navItems[0];
+  function downloadCashClosingExcel() {
+  const now = new Date();
+
+  const formatDateTime = (value: Date) => {
+    return value.toLocaleString("es-PE", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
+  const isToday = (dateString: string) => {
+    const date = new Date(dateString);
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
+  };
+
+  const money = (value: number) => Number(value || 0).toFixed(2);
+
+  const escapeHtml = (value: any) => {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  };
+
+  const todayCompletedSales = completedSales.filter((sale) =>
+    isToday(sale.createdAt)
+  );
+
+  const todayCancelledSales = cancelledSales.filter((sale) =>
+    isToday(sale.createdAt)
+  );
+
+  const totalSoldToday = todayCompletedSales.reduce(
+    (acc, sale) => acc + Number(sale.total || 0),
+    0
+  );
+
+  const totalCancelledToday = todayCancelledSales.reduce(
+    (acc, sale) => acc + Number(sale.total || 0),
+    0
+  );
+
+  const profitEstimated = todayCompletedSales.reduce((saleAcc, sale) => {
+    const saleProfit =
+      sale.items?.reduce((itemAcc, item) => {
+        const quantity = Number(item.quantity || 0);
+        const salePrice = Number(item.unitPrice || 0);
+        const purchasePrice = Number(
+          item.batch?.purchasePrice ?? item.product.purchasePrice ?? 0
+        );
+
+        return itemAcc + (salePrice - purchasePrice) * quantity;
+      }, 0) || 0;
+
+    return saleAcc + saleProfit;
+  }, 0);
+
+  const paymentMap = new Map<string, { method: string; count: number; total: number }>();
+
+  todayCompletedSales.forEach((sale) => {
+    const current = paymentMap.get(sale.paymentMethod);
+    const total = Number(sale.total || 0);
+
+    if (current) {
+      paymentMap.set(sale.paymentMethod, {
+        ...current,
+        count: current.count + 1,
+        total: current.total + total,
+      });
+    } else {
+      paymentMap.set(sale.paymentMethod, {
+        method: sale.paymentMethod,
+        count: 1,
+        total,
+      });
+    }
+  });
+
+  const productMap = new Map<
+    number,
+    {
+      code: string;
+      name: string;
+      quantity: number;
+      total: number;
+      profit: number;
+    }
+  >();
+
+  todayCompletedSales.forEach((sale) => {
+    sale.items?.forEach((item) => {
+      const productId = item.product.id;
+      const quantity = Number(item.quantity || 0);
+      const subtotal = Number(item.subtotal || 0);
+      const salePrice = Number(item.unitPrice || 0);
+      const purchasePrice = Number(
+        item.batch?.purchasePrice ?? item.product.purchasePrice ?? 0
+      );
+      const profit = (salePrice - purchasePrice) * quantity;
+      const current = productMap.get(productId);
+
+      if (current) {
+        productMap.set(productId, {
+          ...current,
+          quantity: current.quantity + quantity,
+          total: current.total + subtotal,
+          profit: current.profit + profit,
+        });
+      } else {
+        productMap.set(productId, {
+          code: item.product.code,
+          name: item.product.name,
+          quantity,
+          total: subtotal,
+          profit,
+        });
+      }
+    });
+  });
+
+  const paymentRows = Array.from(paymentMap.values())
+    .sort((a, b) => b.total - a.total)
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeHtml(formatPaymentMethod(row.method))}</td>
+          <td>${row.count}</td>
+          <td>${money(row.total)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const productRows = Array.from(productMap.values())
+    .sort((a, b) => b.total - a.total)
+    .map(
+      (product) => `
+        <tr>
+          <td>${escapeHtml(product.code)}</td>
+          <td>${escapeHtml(product.name)}</td>
+          <td>${product.quantity}</td>
+          <td>${money(product.total)}</td>
+          <td>${money(product.profit)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const saleRows = todayCompletedSales
+    .map(
+      (sale) => `
+        <tr>
+          <td>${sale.id}</td>
+          <td>${escapeHtml(new Date(sale.createdAt).toLocaleString("es-PE"))}</td>
+          <td>${escapeHtml(formatPaymentMethod(sale.paymentMethod))}</td>
+          <td>${money(Number(sale.discount || 0))}</td>
+          <td>${money(Number(sale.total || 0))}</td>
+          <td>${escapeHtml(formatSaleStatus(sale.status))}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const stockRows = products
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(
+      (product) => `
+        <tr>
+          <td>${escapeHtml(product.code)}</td>
+          <td>${escapeHtml(product.name)}</td>
+          <td>${Number(product.totalStock || 0)}</td>
+          <td>${Number(product.minStock || 0)}</td>
+          <td>${money(Number(product.salePrice || 0))}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const fileDate = now.toISOString().slice(0, 10);
+
+  const excelHtml = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+          }
+          h1 {
+            color: #0f172a;
+          }
+          h2 {
+            margin-top: 24px;
+            color: #1d4ed8;
+          }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 18px;
+          }
+          th {
+            background: #1d4ed8;
+            color: white;
+            font-weight: bold;
+          }
+          th, td {
+            border: 1px solid #94a3b8;
+            padding: 8px;
+            text-align: left;
+          }
+          .number {
+            text-align: right;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Cierre de caja diario - ${escapeHtml(pharmacyName)}</h1>
+
+        <table>
+          <tr><th>Concepto</th><th>Detalle</th></tr>
+          <tr><td>Fecha del cierre</td><td>${escapeHtml(formatDateTime(now))}</td></tr>
+          <tr><td>Usuario</td><td>${escapeHtml(user?.fullName || "Administrador")}</td></tr>
+          <tr><td>Ventas completadas del día</td><td>${todayCompletedSales.length}</td></tr>
+          <tr><td>Ventas anuladas del día</td><td>${todayCancelledSales.length}</td></tr>
+          <tr><td>Total vendido del día</td><td>S/ ${money(totalSoldToday)}</td></tr>
+          <tr><td>Total anulado del día</td><td>S/ ${money(totalCancelledToday)}</td></tr>
+          <tr><td>Ganancia estimada del día</td><td>S/ ${money(profitEstimated)}</td></tr>
+          <tr><td>Stock restante total</td><td>${totalStockUnits} unidades</td></tr>
+          <tr><td>Productos en bajo stock</td><td>${lowStockProducts.length}</td></tr>
+        </table>
+
+        <h2>Ventas por método de pago</h2>
+        <table>
+          <tr>
+            <th>Método</th>
+            <th>Cantidad de ventas</th>
+            <th>Total S/</th>
+          </tr>
+          ${
+            paymentRows ||
+            `<tr><td colspan="3">No hay ventas completadas hoy.</td></tr>`
+          }
+        </table>
+
+        <h2>Productos vendidos hoy</h2>
+        <table>
+          <tr>
+            <th>Código</th>
+            <th>Producto</th>
+            <th>Cantidad vendida</th>
+            <th>Total vendido S/</th>
+            <th>Ganancia estimada S/</th>
+          </tr>
+          ${
+            productRows ||
+            `<tr><td colspan="5">No hay productos vendidos hoy.</td></tr>`
+          }
+        </table>
+
+        <h2>Detalle de ventas completadas</h2>
+        <table>
+          <tr>
+            <th>N° venta</th>
+            <th>Fecha y hora</th>
+            <th>Método de pago</th>
+            <th>Descuento S/</th>
+            <th>Total S/</th>
+            <th>Estado</th>
+          </tr>
+          ${
+            saleRows ||
+            `<tr><td colspan="6">No hay ventas completadas hoy.</td></tr>`
+          }
+        </table>
+
+        <h2>Stock restante actual</h2>
+        <table>
+          <tr>
+            <th>Código</th>
+            <th>Producto</th>
+            <th>Stock restante</th>
+            <th>Stock mínimo</th>
+            <th>Precio venta S/</th>
+          </tr>
+          ${stockRows || `<tr><td colspan="5">No hay productos registrados.</td></tr>`}
+        </table>
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob([excelHtml], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `cierre-caja-${fileDate}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  setMessage("Cierre de caja descargado correctamente");
+}
 
   function updatePharmacyName(value: string) {
     setPharmacyName(value);
