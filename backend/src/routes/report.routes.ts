@@ -27,24 +27,20 @@ function toNumber(value: unknown) {
   return Number(value || 0);
 }
 
-function movementDelta(movementType: string, quantity: number) {
-  if (
-    movementType === "PURCHASE_ENTRY" ||
-    movementType === "MANUAL_ENTRY" ||
-    movementType === "SALE_CANCEL"
-  ) {
+function nonSaleMovementDelta(movementType: string, quantity: number) {
+  if (movementType === "PURCHASE_ENTRY" || movementType === "MANUAL_ENTRY") {
     return quantity;
   }
 
-  if (
-    movementType === "SALE_EXIT" ||
-    movementType === "MANUAL_EXIT" ||
-    movementType === "EXPIRED_PRODUCT"
-  ) {
+  if (movementType === "MANUAL_EXIT" || movementType === "EXPIRED_PRODUCT") {
     return -quantity;
   }
 
   return 0;
+}
+
+function getPurchasePrice(item: any) {
+  return toNumber(item.batch?.purchasePrice ?? item.product?.purchasePrice ?? 0);
 }
 
 reportRouter.get(
@@ -90,12 +86,12 @@ reportRouter.get(
     );
 
     const lowStock = lowStockProducts
-      .map((product: any) => ({
+      .map((product) => ({
         id: product.id,
         name: product.name,
         minStock: product.minStock,
         totalStock: product.batches.reduce(
-          (acc: number, batch: any) => acc + batch.stock,
+          (acc, batch) => acc + batch.stock,
           0
         ),
       }))
@@ -128,16 +124,18 @@ reportRouter.get(
     const user = (req as any).user;
 
     const [
-      completedSales,
-      cancelledSales,
+      salesCreatedInPeriod,
+      cancelledSalesInPeriod,
+      salesCreatedAfterPeriod,
+      cancelledSalesAfterPeriod,
       products,
       movementsInPeriod,
       movementsAfterPeriod,
     ] = await Promise.all([
       prisma.sale.findMany({
         where: {
-          status: "COMPLETED",
           createdAt: { gte: start, lt: end },
+          status: { in: ["COMPLETED", "CANCELLED"] },
         },
         include: {
           user: true,
@@ -166,6 +164,26 @@ reportRouter.get(
           },
         },
         orderBy: { id: "asc" },
+      }),
+
+      prisma.sale.findMany({
+        where: {
+          createdAt: { gte: end },
+          status: { in: ["COMPLETED", "CANCELLED"] },
+        },
+        include: {
+          items: true,
+        },
+      }),
+
+      prisma.sale.findMany({
+        where: {
+          status: "CANCELLED",
+          cancelledAt: { gte: end },
+        },
+        include: {
+          items: true,
+        },
       }),
 
       prisma.product.findMany({
@@ -197,21 +215,21 @@ reportRouter.get(
       }),
     ]);
 
-    const totalSoldToday = completedSales.reduce(
+    const totalSoldToday = salesCreatedInPeriod.reduce(
       (acc, sale) => acc + toNumber(sale.total),
       0
     );
 
-    const totalCancelledToday = cancelledSales.reduce(
+    const totalCancelledToday = cancelledSalesInPeriod.reduce(
       (acc, sale) => acc + toNumber(sale.total),
       0
     );
 
-    const profitEstimated = completedSales.reduce((saleAcc, sale) => {
+    const profitEstimated = salesCreatedInPeriod.reduce((saleAcc, sale) => {
       const saleProfit = sale.items.reduce((itemAcc, item) => {
         const quantity = toNumber(item.quantity);
         const salePrice = toNumber(item.unitPrice);
-        const purchasePrice = toNumber(item.batch?.purchasePrice);
+        const purchasePrice = getPurchasePrice(item);
 
         return itemAcc + (salePrice - purchasePrice) * quantity;
       }, 0);
@@ -224,7 +242,7 @@ reportRouter.get(
       { method: string; count: number; total: number }
     >();
 
-    completedSales.forEach((sale) => {
+    salesCreatedInPeriod.forEach((sale) => {
       const current = paymentMap.get(sale.paymentMethod);
       const total = toNumber(sale.total);
 
@@ -255,12 +273,12 @@ reportRouter.get(
       }
     >();
 
-    completedSales.forEach((sale) => {
+    salesCreatedInPeriod.forEach((sale) => {
       sale.items.forEach((item) => {
         const quantity = toNumber(item.quantity);
         const subtotal = toNumber(item.subtotal);
         const salePrice = toNumber(item.unitPrice);
-        const purchasePrice = toNumber(item.batch?.purchasePrice);
+        const purchasePrice = getPurchasePrice(item);
         const profit = (salePrice - purchasePrice) * quantity;
         const current = productSoldMap.get(item.productId);
 
@@ -284,32 +302,72 @@ reportRouter.get(
       });
     });
 
+    const soldUnitsByProduct = new Map<number, number>();
+    const cancelledUnitsByProduct = new Map<number, number>();
+
+    salesCreatedInPeriod.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const previous = soldUnitsByProduct.get(item.productId) || 0;
+        soldUnitsByProduct.set(
+          item.productId,
+          previous + toNumber(item.quantity)
+        );
+      });
+    });
+
+    cancelledSalesInPeriod.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const previous = cancelledUnitsByProduct.get(item.productId) || 0;
+        cancelledUnitsByProduct.set(
+          item.productId,
+          previous + toNumber(item.quantity)
+        );
+      });
+    });
+
     const deltaAfterByProduct = new Map<number, number>();
+
+    movementsAfterPeriod.forEach((movement) => {
+      const quantity = toNumber(movement.quantity);
+      const delta = nonSaleMovementDelta(movement.movementType, quantity);
+      const previous = deltaAfterByProduct.get(movement.productId) || 0;
+      deltaAfterByProduct.set(movement.productId, previous + delta);
+    });
+
+    salesCreatedAfterPeriod.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const previous = deltaAfterByProduct.get(item.productId) || 0;
+        deltaAfterByProduct.set(
+          item.productId,
+          previous - toNumber(item.quantity)
+        );
+      });
+    });
+
+    cancelledSalesAfterPeriod.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const previous = deltaAfterByProduct.get(item.productId) || 0;
+        deltaAfterByProduct.set(
+          item.productId,
+          previous + toNumber(item.quantity)
+        );
+      });
+    });
+
     const movementSummaryByProduct = new Map<
       number,
       {
         entries: number;
-        sold: number;
-        cancelledReturns: number;
         manualEntries: number;
         manualExits: number;
         expired: number;
       }
     >();
 
-    movementsAfterPeriod.forEach((movement) => {
-      const quantity = toNumber(movement.quantity);
-      const delta = movementDelta(movement.movementType, quantity);
-      const previous = deltaAfterByProduct.get(movement.productId) || 0;
-      deltaAfterByProduct.set(movement.productId, previous + delta);
-    });
-
     movementsInPeriod.forEach((movement) => {
       const current =
         movementSummaryByProduct.get(movement.productId) || {
           entries: 0,
-          sold: 0,
-          cancelledReturns: 0,
           manualEntries: 0,
           manualExits: 0,
           expired: 0,
@@ -319,14 +377,6 @@ reportRouter.get(
 
       if (movement.movementType === "PURCHASE_ENTRY") {
         current.entries += quantity;
-      }
-
-      if (movement.movementType === "SALE_EXIT") {
-        current.sold += quantity;
-      }
-
-      if (movement.movementType === "SALE_CANCEL") {
-        current.cancelledReturns += quantity;
       }
 
       if (movement.movementType === "MANUAL_ENTRY") {
@@ -351,26 +401,30 @@ reportRouter.get(
       );
 
       const deltaAfter = deltaAfterByProduct.get(product.id) || 0;
+
       const movementSummary =
         movementSummaryByProduct.get(product.id) || {
           entries: 0,
-          sold: 0,
-          cancelledReturns: 0,
           manualEntries: 0,
           manualExits: 0,
           expired: 0,
         };
 
-      const deltaPeriod =
-        movementSummary.entries +
-        movementSummary.manualEntries +
-        movementSummary.cancelledReturns -
-        movementSummary.sold -
-        movementSummary.manualExits -
-        movementSummary.expired;
+      const entries = movementSummary.entries + movementSummary.manualEntries;
+      const sold = soldUnitsByProduct.get(product.id) || 0;
+      const cancelledReturns = cancelledUnitsByProduct.get(product.id) || 0;
+      const manualExits = movementSummary.manualExits;
+      const expired = movementSummary.expired;
 
       const finalStock = currentStock - deltaAfter;
-      const initialStock = finalStock - deltaPeriod;
+
+      const initialStock =
+        finalStock -
+        entries -
+        cancelledReturns +
+        sold +
+        manualExits +
+        expired;
 
       return {
         productId: product.id,
@@ -379,11 +433,11 @@ reportRouter.get(
         minStock: product.minStock,
         salePrice: toNumber(product.salePrice),
         initialStock,
-        entries: movementSummary.entries + movementSummary.manualEntries,
-        sold: movementSummary.sold,
-        cancelledReturns: movementSummary.cancelledReturns,
-        manualExits: movementSummary.manualExits,
-        expired: movementSummary.expired,
+        entries,
+        sold,
+        cancelledReturns,
+        manualExits,
+        expired,
         finalStock,
       };
     });
@@ -422,10 +476,11 @@ reportRouter.get(
         email: user.email,
       },
       summary: {
-        completedSales: completedSales.length,
-        cancelledSales: cancelledSales.length,
+        completedSales: salesCreatedInPeriod.length,
+        cancelledSales: cancelledSalesInPeriod.length,
         totalSoldToday,
         totalCancelledToday,
+        netTotal: totalSoldToday - totalCancelledToday,
         profitEstimated,
         stockInitialTotal,
         stockEntriesTotal,
@@ -439,15 +494,26 @@ reportRouter.get(
       productsSold: Array.from(productSoldMap.values()).sort(
         (a, b) => b.total - a.total
       ),
-      saleDetails: completedSales.map((sale) => ({
-        id: sale.id,
-        createdAt: sale.createdAt,
-        paymentMethod: sale.paymentMethod,
-        discount: toNumber(sale.discount),
-        total: toNumber(sale.total),
-        status: sale.status,
-      })),
-      cancelledSaleDetails: cancelledSales.map((sale) => ({
+      saleDetails: salesCreatedInPeriod.map((sale) => {
+        const cancelledAt = sale.cancelledAt
+          ? new Date(sale.cancelledAt)
+          : null;
+
+        const statusAtClosing =
+          cancelledAt && cancelledAt.getTime() < end.getTime()
+            ? "CANCELLED"
+            : "COMPLETED";
+
+        return {
+          id: sale.id,
+          createdAt: sale.createdAt,
+          paymentMethod: sale.paymentMethod,
+          discount: toNumber(sale.discount),
+          total: toNumber(sale.total),
+          status: statusAtClosing,
+        };
+      }),
+      cancelledSaleDetails: cancelledSalesInPeriod.map((sale) => ({
         id: sale.id,
         createdAt: sale.createdAt,
         cancelledAt: sale.cancelledAt,
