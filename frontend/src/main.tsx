@@ -1262,6 +1262,9 @@ function App() {
               <p className="muted">
                 Revisa ventas, stock, anulaciones y alertas principales de la botica en una sola vista.
               </p>
+              <button type="button" onClick={downloadCashClosingExcel}>
+                📥 Descargar cierre de caja Excel
+              </button>
             </div>
           </div>
 
