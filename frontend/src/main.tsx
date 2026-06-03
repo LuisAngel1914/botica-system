@@ -49,6 +49,7 @@ type SaleItem = {
   unitPrice: number | string;
   subtotal: number | string;
   product: Product;
+  batch?: Batch;
 };
 
 type Sale = {
