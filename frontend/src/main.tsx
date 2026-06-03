@@ -210,6 +210,14 @@ function App() {
   const [saleQuantity, setSaleQuantity] = useState(1);
   const [salePaymentMethod, setSalePaymentMethod] = useState("CASH");
   const [saleDiscount, setSaleDiscount] = useState(0);
+  const [reportDate, setReportDate] = useState(() => {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Lima",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  });
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
@@ -1239,9 +1247,20 @@ function App() {
               <p className="muted">
                 Revisa ventas, stock, anulaciones y alertas principales de la botica en una sola vista.
               </p>
-              <button type="button" onClick={downloadCashClosingExcel}>
-                📥 Descargar cierre de caja Excel
-              </button>
+              <div className="report-actions">
+                <label>
+                  Fecha de cierre
+                  <input
+                    type="date"
+                    value={reportDate}
+                    onChange={(e) => setReportDate(e.target.value)}
+                  />
+                </label>
+              
+                <button type="button" onClick={downloadCashClosingExcel}>
+                  📥 Descargar cierre de caja 
+                </button>
+              </div>
             </div>
           </div>
 
