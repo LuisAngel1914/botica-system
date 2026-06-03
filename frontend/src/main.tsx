@@ -367,321 +367,298 @@ function App() {
 
   const currentSection =
     navItems.find((item) => item.key === activeSection) || navItems[0];
-  function downloadCashClosingExcel() {
-  const now = new Date();
-
-  const formatDateTime = (value: Date) => {
-    return value.toLocaleString("es-PE", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  };
-
-  const isToday = (dateString: string) => {
-    const date = new Date(dateString);
-    return (
-      date.getFullYear() === now.getFullYear() &&
-      date.getMonth() === now.getMonth() &&
-      date.getDate() === now.getDate()
-    );
-  };
-
-  const money = (value: number) => Number(value || 0).toFixed(2);
-
-  const escapeHtml = (value: any) => {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;");
-  };
-
-  const todayCompletedSales = completedSales.filter((sale) =>
-    isToday(sale.createdAt)
-  );
-
-  const todayCancelledSales = cancelledSales.filter((sale) =>
-    isToday(sale.createdAt)
-  );
-
-  const totalSoldToday = todayCompletedSales.reduce(
-    (acc, sale) => acc + Number(sale.total || 0),
-    0
-  );
-
-  const totalCancelledToday = todayCancelledSales.reduce(
-    (acc, sale) => acc + Number(sale.total || 0),
-    0
-  );
-
-  const profitEstimated = todayCompletedSales.reduce((saleAcc, sale) => {
-    const saleProfit =
-      sale.items?.reduce((itemAcc, item) => {
-        const quantity = Number(item.quantity || 0);
-        const salePrice = Number(item.unitPrice || 0);
-        const purchasePrice = Number(
-          item.batch?.purchasePrice ?? item.product.purchasePrice ?? 0
-        );
-
-        return itemAcc + (salePrice - purchasePrice) * quantity;
-      }, 0) || 0;
-
-    return saleAcc + saleProfit;
-  }, 0);
-
-  const paymentMap = new Map<string, { method: string; count: number; total: number }>();
-
-  todayCompletedSales.forEach((sale) => {
-    const current = paymentMap.get(sale.paymentMethod);
-    const total = Number(sale.total || 0);
-
-    if (current) {
-      paymentMap.set(sale.paymentMethod, {
-        ...current,
-        count: current.count + 1,
-        total: current.total + total,
-      });
-    } else {
-      paymentMap.set(sale.paymentMethod, {
-        method: sale.paymentMethod,
-        count: 1,
-        total,
-      });
-    }
-  });
-
-  const productMap = new Map<
-    number,
-    {
-      code: string;
-      name: string;
-      quantity: number;
-      total: number;
-      profit: number;
-    }
-  >();
-
-  todayCompletedSales.forEach((sale) => {
-    sale.items?.forEach((item) => {
-      const productId = item.product.id;
-      const quantity = Number(item.quantity || 0);
-      const subtotal = Number(item.subtotal || 0);
-      const salePrice = Number(item.unitPrice || 0);
-      const purchasePrice = Number(
-        item.batch?.purchasePrice ?? item.product.purchasePrice ?? 0
-      );
-      const profit = (salePrice - purchasePrice) * quantity;
-      const current = productMap.get(productId);
-
-      if (current) {
-        productMap.set(productId, {
-          ...current,
-          quantity: current.quantity + quantity,
-          total: current.total + subtotal,
-          profit: current.profit + profit,
-        });
-      } else {
-        productMap.set(productId, {
-          code: item.product.code,
-          name: item.product.name,
-          quantity,
-          total: subtotal,
-          profit,
-        });
+  async function downloadCashClosingExcel() {
+  try {
+    const response = await fetch(
+      `${API_URL}/reports/cash-closing?date=${reportDate}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       }
+    );
+
+    const report = await response.json();
+
+    if (!response.ok) {
+      setMessage(report.message || "No se pudo generar el cierre de caja");
+      return;
+    }
+
+    const money = (value: number) => Number(value || 0).toFixed(2);
+
+    const escapeHtml = (value: any) => {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    };
+
+    const formatDateTime = (value: string | Date) => {
+      return new Date(value).toLocaleString("es-PE", {
+        timeZone: "America/Lima",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    };
+
+    const paymentRows =
+      report.paymentMethods
+        ?.map(
+          (row: any) => `
+            <tr>
+              <td>${escapeHtml(formatPaymentMethod(row.method))}</td>
+              <td>${row.count}</td>
+              <td>S/ ${money(row.total)}</td>
+            </tr>
+          `
+        )
+        .join("") || "";
+
+    const productRows =
+      report.productsSold
+        ?.map(
+          (product: any) => `
+            <tr>
+              <td>${escapeHtml(product.code)}</td>
+              <td>${escapeHtml(product.name)}</td>
+              <td>${product.quantity}</td>
+              <td>S/ ${money(product.total)}</td>
+              <td>S/ ${money(product.profit)}</td>
+            </tr>
+          `
+        )
+        .join("") || "";
+
+    const saleRows =
+      report.saleDetails
+        ?.map(
+          (sale: any) => `
+            <tr>
+              <td>${sale.id}</td>
+              <td>${escapeHtml(formatDateTime(sale.createdAt))}</td>
+              <td>${escapeHtml(formatPaymentMethod(sale.paymentMethod))}</td>
+              <td>S/ ${money(sale.discount)}</td>
+              <td>S/ ${money(sale.total)}</td>
+              <td>${escapeHtml(formatSaleStatus(sale.status))}</td>
+            </tr>
+          `
+        )
+        .join("") || "";
+
+    const cancelledRows =
+      report.cancelledSaleDetails
+        ?.map(
+          (sale: any) => `
+            <tr>
+              <td>${sale.id}</td>
+              <td>${escapeHtml(formatDateTime(sale.createdAt))}</td>
+              <td>${sale.cancelledAt ? escapeHtml(formatDateTime(sale.cancelledAt)) : ""}</td>
+              <td>${escapeHtml(formatPaymentMethod(sale.paymentMethod))}</td>
+              <td>S/ ${money(sale.total)}</td>
+              <td>${escapeHtml(sale.cancelReason || "")}</td>
+            </tr>
+          `
+        )
+        .join("") || "";
+
+    const stockRows =
+      report.stockMovements
+        ?.map(
+          (item: any) => `
+            <tr>
+              <td>${escapeHtml(item.code)}</td>
+              <td>${escapeHtml(item.name)}</td>
+              <td>${item.initialStock}</td>
+              <td>${item.entries}</td>
+              <td>${item.sold}</td>
+              <td>${item.cancelledReturns}</td>
+              <td>${item.manualExits}</td>
+              <td>${item.expired}</td>
+              <td>${item.finalStock}</td>
+              <td>${item.minStock}</td>
+              <td>S/ ${money(item.salePrice)}</td>
+            </tr>
+          `
+        )
+        .join("") || "";
+
+    const fileDate = report.date || reportDate;
+
+    const excelHtml = `
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+            }
+            h1 {
+              color: #0f172a;
+              font-size: 26px;
+            }
+            h2 {
+              margin-top: 24px;
+              color: #1d4ed8;
+              font-size: 20px;
+            }
+            table {
+              border-collapse: collapse;
+              width: 100%;
+              margin-bottom: 18px;
+            }
+            th {
+              background: #1d4ed8;
+              color: white;
+              font-weight: bold;
+            }
+            th, td {
+              border: 1px solid #94a3b8;
+              padding: 8px;
+              text-align: left;
+            }
+            .resumen th {
+              background: #0f172a;
+            }
+            .positivo {
+              color: #047857;
+              font-weight: bold;
+            }
+            .alerta {
+              color: #b91c1c;
+              font-weight: bold;
+            }
+          </style>
+        </head>
+
+        <body>
+          <h1>Cierre de caja diario - ${escapeHtml(pharmacyName)}</h1>
+
+          <h2>Resumen general</h2>
+          <table class="resumen">
+            <tr><th>Concepto</th><th>Detalle</th></tr>
+            <tr><td>Fecha del cierre</td><td>${escapeHtml(report.date)}</td></tr>
+            <tr><td>Generado el</td><td>${escapeHtml(formatDateTime(report.generatedAt))}</td></tr>
+            <tr><td>Usuario</td><td>${escapeHtml(report.user?.fullName || "Administrador")}</td></tr>
+            <tr><td>Ventas completadas</td><td>${report.summary.completedSales}</td></tr>
+            <tr><td>Ventas anuladas</td><td>${report.summary.cancelledSales}</td></tr>
+            <tr><td>Total vendido</td><td class="positivo">S/ ${money(report.summary.totalSoldToday)}</td></tr>
+            <tr><td>Total anulado</td><td class="alerta">S/ ${money(report.summary.totalCancelledToday)}</td></tr>
+            <tr><td>Ganancia estimada</td><td class="positivo">S/ ${money(report.summary.profitEstimated)}</td></tr>
+            <tr><td>Stock inicial total</td><td>${report.summary.stockInitialTotal} unidades</td></tr>
+            <tr><td>Entradas del día</td><td>${report.summary.stockEntriesTotal} unidades</td></tr>
+            <tr><td>Unidades vendidas</td><td>${report.summary.stockSoldTotal} unidades</td></tr>
+            <tr><td>Unidades devueltas por anulación</td><td>${report.summary.stockCancelledReturnTotal} unidades</td></tr>
+            <tr><td>Stock final total</td><td>${report.summary.stockFinalTotal} unidades</td></tr>
+          </table>
+
+          <h2>Ventas por método de pago</h2>
+          <table>
+            <tr>
+              <th>Método</th>
+              <th>Cantidad de ventas</th>
+              <th>Total</th>
+            </tr>
+            ${
+              paymentRows ||
+              `<tr><td colspan="3">No hay ventas completadas en esta fecha.</td></tr>`
+            }
+          </table>
+
+          <h2>Productos vendidos</h2>
+          <table>
+            <tr>
+              <th>Código</th>
+              <th>Producto</th>
+              <th>Cantidad vendida</th>
+              <th>Total vendido</th>
+              <th>Ganancia estimada</th>
+            </tr>
+            ${
+              productRows ||
+              `<tr><td colspan="5">No hay productos vendidos en esta fecha.</td></tr>`
+            }
+          </table>
+
+          <h2>Detalle de ventas completadas</h2>
+          <table>
+            <tr>
+              <th>N° venta</th>
+              <th>Fecha y hora</th>
+              <th>Método de pago</th>
+              <th>Descuento</th>
+              <th>Total</th>
+              <th>Estado</th>
+            </tr>
+            ${
+              saleRows ||
+              `<tr><td colspan="6">No hay ventas completadas en esta fecha.</td></tr>`
+            }
+          </table>
+
+          <h2>Ventas anuladas</h2>
+          <table>
+            <tr>
+              <th>N° venta</th>
+              <th>Fecha de venta</th>
+              <th>Fecha de anulación</th>
+              <th>Método de pago</th>
+              <th>Total</th>
+              <th>Motivo</th>
+            </tr>
+            ${
+              cancelledRows ||
+              `<tr><td colspan="6">No hay ventas anuladas en esta fecha.</td></tr>`
+            }
+          </table>
+
+          <h2>Movimiento de stock del día</h2>
+          <table>
+            <tr>
+              <th>Código</th>
+              <th>Producto</th>
+              <th>Stock inicial</th>
+              <th>Entradas</th>
+              <th>Vendido</th>
+              <th>Devuelto por anulación</th>
+              <th>Salidas manuales</th>
+              <th>Vencidos</th>
+              <th>Stock final</th>
+              <th>Stock mínimo</th>
+              <th>Precio venta</th>
+            </tr>
+            ${
+              stockRows ||
+              `<tr><td colspan="11">No hay productos registrados.</td></tr>`
+            }
+          </table>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([excelHtml], {
+      type: "application/vnd.ms-excel;charset=utf-8;",
     });
-  });
 
-  const paymentRows = Array.from(paymentMap.values())
-    .sort((a, b) => b.total - a.total)
-    .map(
-      (row) => `
-        <tr>
-          <td>${escapeHtml(formatPaymentMethod(row.method))}</td>
-          <td>${row.count}</td>
-          <td>${money(row.total)}</td>
-        </tr>
-      `
-    )
-    .join("");
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
 
-  const productRows = Array.from(productMap.values())
-    .sort((a, b) => b.total - a.total)
-    .map(
-      (product) => `
-        <tr>
-          <td>${escapeHtml(product.code)}</td>
-          <td>${escapeHtml(product.name)}</td>
-          <td>${product.quantity}</td>
-          <td>${money(product.total)}</td>
-          <td>${money(product.profit)}</td>
-        </tr>
-      `
-    )
-    .join("");
+    link.href = url;
+    link.download = `cierre-caja-${fileDate}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 
-  const saleRows = todayCompletedSales
-    .map(
-      (sale) => `
-        <tr>
-          <td>${sale.id}</td>
-          <td>${escapeHtml(new Date(sale.createdAt).toLocaleString("es-PE"))}</td>
-          <td>${escapeHtml(formatPaymentMethod(sale.paymentMethod))}</td>
-          <td>${money(Number(sale.discount || 0))}</td>
-          <td>${money(Number(sale.total || 0))}</td>
-          <td>${escapeHtml(formatSaleStatus(sale.status))}</td>
-        </tr>
-      `
-    )
-    .join("");
-
-  const stockRows = products
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(
-      (product) => `
-        <tr>
-          <td>${escapeHtml(product.code)}</td>
-          <td>${escapeHtml(product.name)}</td>
-          <td>${Number(product.totalStock || 0)}</td>
-          <td>${Number(product.minStock || 0)}</td>
-          <td>${money(Number(product.salePrice || 0))}</td>
-        </tr>
-      `
-    )
-    .join("");
-
-  const fileDate = now.toISOString().slice(0, 10);
-
-  const excelHtml = `
-    <html>
-      <head>
-        <meta charset="UTF-8" />
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-          }
-          h1 {
-            color: #0f172a;
-          }
-          h2 {
-            margin-top: 24px;
-            color: #1d4ed8;
-          }
-          table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-bottom: 18px;
-          }
-          th {
-            background: #1d4ed8;
-            color: white;
-            font-weight: bold;
-          }
-          th, td {
-            border: 1px solid #94a3b8;
-            padding: 8px;
-            text-align: left;
-          }
-          .number {
-            text-align: right;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>Cierre de caja diario - ${escapeHtml(pharmacyName)}</h1>
-
-        <table>
-          <tr><th>Concepto</th><th>Detalle</th></tr>
-          <tr><td>Fecha del cierre</td><td>${escapeHtml(formatDateTime(now))}</td></tr>
-          <tr><td>Usuario</td><td>${escapeHtml(user?.fullName || "Administrador")}</td></tr>
-          <tr><td>Ventas completadas del día</td><td>${todayCompletedSales.length}</td></tr>
-          <tr><td>Ventas anuladas del día</td><td>${todayCancelledSales.length}</td></tr>
-          <tr><td>Total vendido del día</td><td>S/ ${money(totalSoldToday)}</td></tr>
-          <tr><td>Total anulado del día</td><td>S/ ${money(totalCancelledToday)}</td></tr>
-          <tr><td>Ganancia estimada del día</td><td>S/ ${money(profitEstimated)}</td></tr>
-          <tr><td>Stock restante total</td><td>${totalStockUnits} unidades</td></tr>
-          <tr><td>Productos en bajo stock</td><td>${lowStockProducts.length}</td></tr>
-        </table>
-
-        <h2>Ventas por método de pago</h2>
-        <table>
-          <tr>
-            <th>Método</th>
-            <th>Cantidad de ventas</th>
-            <th>Total S/</th>
-          </tr>
-          ${
-            paymentRows ||
-            `<tr><td colspan="3">No hay ventas completadas hoy.</td></tr>`
-          }
-        </table>
-
-        <h2>Productos vendidos hoy</h2>
-        <table>
-          <tr>
-            <th>Código</th>
-            <th>Producto</th>
-            <th>Cantidad vendida</th>
-            <th>Total vendido S/</th>
-            <th>Ganancia estimada S/</th>
-          </tr>
-          ${
-            productRows ||
-            `<tr><td colspan="5">No hay productos vendidos hoy.</td></tr>`
-          }
-        </table>
-
-        <h2>Detalle de ventas completadas</h2>
-        <table>
-          <tr>
-            <th>N° venta</th>
-            <th>Fecha y hora</th>
-            <th>Método de pago</th>
-            <th>Descuento S/</th>
-            <th>Total S/</th>
-            <th>Estado</th>
-          </tr>
-          ${
-            saleRows ||
-            `<tr><td colspan="6">No hay ventas completadas hoy.</td></tr>`
-          }
-        </table>
-
-        <h2>Stock restante actual</h2>
-        <table>
-          <tr>
-            <th>Código</th>
-            <th>Producto</th>
-            <th>Stock restante</th>
-            <th>Stock mínimo</th>
-            <th>Precio venta S/</th>
-          </tr>
-          ${stockRows || `<tr><td colspan="5">No hay productos registrados.</td></tr>`}
-        </table>
-      </body>
-    </html>
-  `;
-
-  const blob = new Blob([excelHtml], {
-    type: "application/vnd.ms-excel;charset=utf-8;",
-  });
-
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = `cierre-caja-${fileDate}.xls`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-
-  setMessage("Cierre de caja descargado correctamente");
+    setMessage("Cierre de caja descargado correctamente");
+  } catch (error) {
+    setMessage("No se pudo descargar el cierre de caja");
+  }
 }
 
   function updatePharmacyName(value: string) {
