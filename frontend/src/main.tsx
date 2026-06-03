@@ -505,80 +505,237 @@ function App() {
           <style>
             body {
               font-family: Arial, sans-serif;
-            }
-            h1 {
               color: #0f172a;
-              font-size: 26px;
+              background: #ffffff;
             }
-            h2 {
-              margin-top: 24px;
-              color: #1d4ed8;
-              font-size: 20px;
+    
+            .header {
+              background: #0f172a;
+              color: #ffffff;
+              padding: 18px;
+              border-radius: 8px;
             }
+    
+            .header h1 {
+              margin: 0;
+              font-size: 28px;
+              color: #ffffff;
+            }
+    
+            .header p {
+              margin: 4px 0 0 0;
+              font-size: 14px;
+              color: #dbeafe;
+            }
+    
+            .info-table {
+              width: 100%;
+              margin-top: 14px;
+              border-collapse: collapse;
+            }
+    
+            .info-table td {
+              border: 1px solid #cbd5e1;
+              padding: 8px;
+              font-size: 13px;
+            }
+    
+            .info-label {
+              background: #e2e8f0;
+              font-weight: bold;
+              width: 180px;
+            }
+    
+            .section-title {
+              background: #1d4ed8;
+              color: #ffffff;
+              font-size: 18px;
+              font-weight: bold;
+              padding: 8px;
+              margin-top: 22px;
+            }
+    
             table {
               border-collapse: collapse;
               width: 100%;
               margin-bottom: 18px;
             }
+    
             th {
-              background: #1d4ed8;
-              color: white;
+              background: #2563eb;
+              color: #ffffff;
               font-weight: bold;
-            }
-            th, td {
-              border: 1px solid #94a3b8;
+              border: 1px solid #93c5fd;
               padding: 8px;
-              text-align: left;
+              text-align: center;
             }
-            .resumen th {
+    
+            td {
+              border: 1px solid #cbd5e1;
+              padding: 7px;
+              font-size: 13px;
+            }
+    
+            .center {
+              text-align: center;
+            }
+    
+            .right {
+              text-align: right;
+            }
+    
+            .money {
+              text-align: right;
+              font-weight: bold;
+            }
+    
+            .positive {
+              background: #dcfce7;
+              color: #166534;
+              font-weight: bold;
+            }
+    
+            .warning {
+              background: #fee2e2;
+              color: #991b1b;
+              font-weight: bold;
+            }
+    
+            .neutral {
+              background: #eff6ff;
+              color: #1e40af;
+              font-weight: bold;
+            }
+    
+            .summary-table th {
               background: #0f172a;
+              color: #ffffff;
             }
-            .positivo {
-              color: #047857;
-              font-weight: bold;
+    
+            .summary-table td {
+              font-size: 14px;
             }
-            .alerta {
-              color: #b91c1c;
-              font-weight: bold;
+    
+            .footer-box {
+              margin-top: 26px;
+              border: 1px solid #cbd5e1;
+              padding: 14px;
+            }
+    
+            .signature-table {
+              margin-top: 25px;
+              width: 100%;
+              border-collapse: collapse;
+            }
+    
+            .signature-table td {
+              border: none;
+              padding-top: 30px;
+              text-align: center;
+              font-size: 13px;
+            }
+    
+            .signature-line {
+              border-top: 1px solid #0f172a;
+              width: 260px;
+              margin: 0 auto;
+              padding-top: 6px;
             }
           </style>
         </head>
-
+    
         <body>
-          <h1>Cierre de caja diario - ${escapeHtml(pharmacyName)}</h1>
-
-          <h2>Resumen general</h2>
-          <table class="resumen">
-            <tr><th>Concepto</th><th>Detalle</th></tr>
-            <tr><td>Fecha del cierre</td><td>${escapeHtml(report.date)}</td></tr>
-            <tr><td>Generado el</td><td>${escapeHtml(formatDateTime(report.generatedAt))}</td></tr>
-            <tr><td>Usuario</td><td>${escapeHtml(report.user?.fullName || "Administrador")}</td></tr>
-            <tr><td>Ventas completadas</td><td>${report.summary.completedSales}</td></tr>
-            <tr><td>Ventas anuladas</td><td>${report.summary.cancelledSales}</td></tr>
-            <tr><td>Total vendido</td><td class="positivo">S/ ${money(report.summary.totalSoldToday)}</td></tr>
-            <tr><td>Total anulado</td><td class="alerta">S/ ${money(report.summary.totalCancelledToday)}</td></tr>
-            <tr><td>Ganancia estimada</td><td class="positivo">S/ ${money(report.summary.profitEstimated)}</td></tr>
-            <tr><td>Stock inicial total</td><td>${report.summary.stockInitialTotal} unidades</td></tr>
-            <tr><td>Entradas del día</td><td>${report.summary.stockEntriesTotal} unidades</td></tr>
-            <tr><td>Unidades vendidas</td><td>${report.summary.stockSoldTotal} unidades</td></tr>
-            <tr><td>Unidades devueltas por anulación</td><td>${report.summary.stockCancelledReturnTotal} unidades</td></tr>
-            <tr><td>Stock final total</td><td>${report.summary.stockFinalTotal} unidades</td></tr>
+          <div class="header">
+            <h1>CIERRE DE CAJA DIARIO - ${escapeHtml(pharmacyName)}</h1>
+            <p>Reporte administrativo de ventas, ingresos, anulaciones y movimiento de stock</p>
+          </div>
+    
+          <table class="info-table">
+            <tr>
+              <td class="info-label">Fecha de cierre</td>
+              <td>${escapeHtml(report.date)}</td>
+              <td class="info-label">Generado el</td>
+              <td>${escapeHtml(formatDateTime(report.generatedAt))}</td>
+            </tr>
+            <tr>
+              <td class="info-label">Usuario responsable</td>
+              <td>${escapeHtml(report.user?.fullName || "Administrador")}</td>
+              <td class="info-label">Sistema</td>
+              <td>Botica - Ventas e Inventario</td>
+            </tr>
           </table>
-
-          <h2>Ventas por método de pago</h2>
+    
+          <div class="section-title">1. Resumen general del día</div>
+    
+          <table class="summary-table">
+            <tr>
+              <th>Concepto</th>
+              <th>Resultado</th>
+            </tr>
+            <tr>
+              <td>Ventas completadas</td>
+              <td class="center">${report.summary.completedSales}</td>
+            </tr>
+            <tr>
+              <td>Ventas anuladas</td>
+              <td class="center warning">${report.summary.cancelledSales}</td>
+            </tr>
+            <tr>
+              <td>Total vendido</td>
+              <td class="money positive">S/ ${money(report.summary.totalSoldToday)}</td>
+            </tr>
+            <tr>
+              <td>Total anulado</td>
+              <td class="money warning">S/ ${money(report.summary.totalCancelledToday)}</td>
+            </tr>
+            <tr>
+              <td>Total neto del día</td>
+              <td class="money neutral">
+                S/ ${money(report.summary.netTotal ?? report.summary.totalSoldToday - report.summary.totalCancelledToday)}
+              </td>
+            </tr>
+            <tr>
+              <td>Ganancia estimada</td>
+              <td class="money positive">S/ ${money(report.summary.profitEstimated)}</td>
+            </tr>
+            <tr>
+              <td>Stock inicial total</td>
+              <td class="center">${report.summary.stockInitialTotal} unidades</td>
+            </tr>
+            <tr>
+              <td>Entradas del día</td>
+              <td class="center">${report.summary.stockEntriesTotal} unidades</td>
+            </tr>
+            <tr>
+              <td>Unidades vendidas</td>
+              <td class="center">${report.summary.stockSoldTotal} unidades</td>
+            </tr>
+            <tr>
+              <td>Unidades devueltas por anulación</td>
+              <td class="center">${report.summary.stockCancelledReturnTotal} unidades</td>
+            </tr>
+            <tr>
+              <td>Stock final total</td>
+              <td class="center neutral">${report.summary.stockFinalTotal} unidades</td>
+            </tr>
+          </table>
+    
+          <div class="section-title">2. Ventas por método de pago</div>
+    
           <table>
             <tr>
-              <th>Método</th>
+              <th>Método de pago</th>
               <th>Cantidad de ventas</th>
               <th>Total</th>
             </tr>
             ${
               paymentRows ||
-              `<tr><td colspan="3">No hay ventas completadas en esta fecha.</td></tr>`
+              `<tr><td colspan="3" class="center">No hay ventas completadas en esta fecha.</td></tr>`
             }
           </table>
-
-          <h2>Productos vendidos</h2>
+    
+          <div class="section-title">3. Productos vendidos</div>
+    
           <table>
             <tr>
               <th>Código</th>
@@ -589,11 +746,12 @@ function App() {
             </tr>
             ${
               productRows ||
-              `<tr><td colspan="5">No hay productos vendidos en esta fecha.</td></tr>`
+              `<tr><td colspan="5" class="center">No hay productos vendidos en esta fecha.</td></tr>`
             }
           </table>
-
-          <h2>Detalle de ventas completadas</h2>
+    
+          <div class="section-title">4. Detalle de ventas completadas</div>
+    
           <table>
             <tr>
               <th>N° venta</th>
@@ -605,11 +763,12 @@ function App() {
             </tr>
             ${
               saleRows ||
-              `<tr><td colspan="6">No hay ventas completadas en esta fecha.</td></tr>`
+              `<tr><td colspan="6" class="center">No hay ventas completadas en esta fecha.</td></tr>`
             }
           </table>
-
-          <h2>Ventas anuladas</h2>
+    
+          <div class="section-title">5. Ventas anuladas</div>
+    
           <table>
             <tr>
               <th>N° venta</th>
@@ -621,11 +780,12 @@ function App() {
             </tr>
             ${
               cancelledRows ||
-              `<tr><td colspan="6">No hay ventas anuladas en esta fecha.</td></tr>`
+              `<tr><td colspan="6" class="center">No hay ventas anuladas en esta fecha.</td></tr>`
             }
           </table>
-
-          <h2>Movimiento de stock del día</h2>
+    
+          <div class="section-title">6. Movimiento de stock del día</div>
+    
           <table>
             <tr>
               <th>Código</th>
@@ -642,8 +802,32 @@ function App() {
             </tr>
             ${
               stockRows ||
-              `<tr><td colspan="11">No hay productos registrados.</td></tr>`
+              `<tr><td colspan="11" class="center">No hay productos registrados.</td></tr>`
             }
+          </table>
+    
+          <div class="section-title">7. Observaciones del cierre</div>
+    
+          <div class="footer-box">
+            <p><strong>Observaciones:</strong></p>
+            <p>__________________________________________________________________________________________</p>
+            <p>__________________________________________________________________________________________</p>
+            <p>__________________________________________________________________________________________</p>
+          </div>
+    
+          <table class="signature-table">
+            <tr>
+              <td>
+                <div class="signature-line">
+                  Responsable de caja
+                </div>
+              </td>
+              <td>
+                <div class="signature-line">
+                  Administrador / Encargado
+                </div>
+              </td>
+            </tr>
           </table>
         </body>
       </html>
