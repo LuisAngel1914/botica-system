@@ -2,34 +2,69 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export const sendCashClosingEmail = async (data: any) => {
-  try {
-    const response = await resend.emails.send({
-      from: "Botica L y L <onboarding@resend.dev>",
-      to: data.email || "admin@botica.com",
-      subject: `Cierre de caja - ${data.date}`,
+// --------------------
+// FUNCION BASE
+// --------------------
+const sendEmail = async (to: string, subject: string, html: string) => {
+  return await resend.emails.send({
+    from: "Botica L y L <onboarding@resend.dev>",
+    to,
+    subject,
+    html,
+  });
+};
 
-      html: `
-        <div style="font-family: Arial; padding: 20px;">
-          <h2>Cierre de caja diario</h2>
+// --------------------
+// 1. BIENVENIDA
+// --------------------
+export const sendWelcomeEmail = async (to: string, name: string) => {
+  return await sendEmail(
+    to,
+    "Bienvenido al sistema Botica L y L",
+    `<h2>Bienvenido ${name}</h2>`
+  );
+};
 
-          <p><strong>Fecha:</strong> ${data.date || "-"}</p>
-          <p><strong>Total ventas:</strong> S/ ${data.totalSales || 0}</p>
-          <p><strong>Ganancia:</strong> S/ ${data.profit || 0}</p>
-          <p><strong>Stock restante:</strong> ${data.stock || 0}</p>
+// --------------------
+// 2. VENTA CONFIRMADA
+// --------------------
+export const sendSaleEmail = async (to: string, data: any) => {
+  return await sendEmail(
+    to,
+    "Venta confirmada",
+    `<p>Total: S/ ${data.total}</p>`
+  );
+};
 
-          <hr/>
+// --------------------
+// 3. STOCK BAJO
+// --------------------
+export const sendStockLowEmail = async (to: string, product: any) => {
+  return await sendEmail(
+    to,
+    "Stock bajo",
+    `<p>${product.name} tiene stock bajo</p>`
+  );
+};
 
-          <p style="color: #666;">
-            Reporte generado automáticamente por el sistema de botica.
-          </p>
-        </div>
-      `,
-    });
+// --------------------
+// 4. RECUPERAR PASSWORD
+// --------------------
+export const sendPasswordRecoveryEmail = async (to: string, link: string) => {
+  return await sendEmail(
+    to,
+    "Recuperar contraseña",
+    `<a href="${link}">Restablecer contraseña</a>`
+  );
+};
 
-    return response;
-  } catch (error) {
-    console.error("Error enviando email:", error);
-    throw error;
-  }
+// --------------------
+// 5. CIERRE DE CAJA
+// --------------------
+export const sendCashClosingEmail = async (to: string, data: any) => {
+  return await sendEmail(
+    to,
+    `Cierre de caja - ${data.date}`,
+    `<p>Total ventas: S/ ${data.totalSales}</p>`
+  );
 };
