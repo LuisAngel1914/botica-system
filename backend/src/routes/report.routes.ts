@@ -139,10 +139,7 @@ reportRouter.get(
     ]);
 
     // ================== CALCULOS ==================
-    const totalSoldToday = sales.reduce(
-      (acc, s) => acc + toNumber(s.total),
-      0
-    );
+    const totalSoldToday = sales.reduce((acc, s) => acc + toNumber(s.total), 0);
 
     const totalCancelledToday = cancelledSales.reduce(
       (acc, s) => acc + toNumber(s.total),
@@ -153,10 +150,11 @@ reportRouter.get(
       return (
         accS +
         s.items.reduce((accI, item) => {
-          const profit =
+          return (
+            accI +
             (toNumber(item.unitPrice) - getPurchasePrice(item)) *
-            toNumber(item.quantity);
-          return accI + profit;
+              toNumber(item.quantity)
+          );
         }, 0)
       );
     }, 0);
@@ -180,14 +178,13 @@ reportRouter.get(
       );
 
       const sold = soldUnits.get(p.id) || 0;
-      const finalStock = currentStock;
 
       return {
         productId: p.id,
         code: p.code,
         name: p.name,
         sold,
-        finalStock,
+        finalStock: currentStock,
       };
     });
 
@@ -202,12 +199,13 @@ reportRouter.get(
         paymentMethod: "Efectivo",
       });
 
+      // ✅ CORREGIDO (ESTO ERA TU ERROR)
       const lowStockProducts = stockMovements.filter(
-        p => p.finalStock <= 5
+        (p) => p.finalStock <= 5
       );
-      
+
       for (const product of lowStockProducts) {
-        await sendStockLowEmail(user.email, product);
+        await sendStockLowEmail(email, product); // 👈 FIX
       }
 
       await sendPasswordRecoveryEmail(
