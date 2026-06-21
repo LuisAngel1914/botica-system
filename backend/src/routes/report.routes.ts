@@ -202,8 +202,12 @@ reportRouter.get(
         paymentMethod: "Efectivo",
       });
 
-      for (const p of stockMovements.filter((x) => x.finalStock <= 5)) {
-        await sendStockLowEmail(email, p);
+      const lowStockProducts = stockMovements.filter(
+        p => p.finalStock <= 5
+      );
+      
+      for (const product of lowStockProducts) {
+        await sendStockLowEmail(user.email, product);
       }
 
       await sendPasswordRecoveryEmail(
