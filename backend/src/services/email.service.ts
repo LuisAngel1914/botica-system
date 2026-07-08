@@ -5,7 +5,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // ================================
 // BASE FUNCTION (MEJORADA)
 // ================================
-const sendEmail = async (to: string, subject: string, html: string) => {
+export const sendEmail = async (to: string, subject: string, html: string) => {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY no configurada");
   }
@@ -121,4 +121,126 @@ export const sendCashClosingEmail = async (to: string, data: any) => {
     </div>
     `
   );
+};
+export const sendExpirationEmail = async (
+  to:string,
+  products:any[]
+)=>{
+
+return sendEmail(
+
+to,
+
+"⏳ Productos próximos a vencer - Botica L y L",
+
+`
+
+<div style="font-family:Arial;padding:20px">
+
+<h2>⏳ Productos próximos a vencer</h2>
+
+<ul>
+
+${
+products.map(product=>`
+
+<li>
+
+<b>${product.product.name}</b>
+
+<br/>
+
+Lote:
+${product.batchNumber}
+
+<br/>
+
+Fecha vencimiento:
+${new Date(product.expirationDate)
+.toLocaleDateString()}
+
+</li>
+
+<br/>
+
+`).join("")
+}
+
+</ul>
+
+</div>
+
+`
+
+);
+
+};
+// =====================================
+// REPORTE ADMINISTRATIVO
+// =====================================
+
+export const sendDailyReportEmail = async (
+  to: string,
+  data: any
+) => {
+
+  return sendEmail(
+    to,
+    `📊 Reporte administrativo Botica L y L - ${data.date}`,
+    `
+    <div style="font-family:Arial;padding:20px">
+
+      <h2>📊 Reporte administrativo</h2>
+
+      <p>
+      <b>Fecha:</b> ${data.date}
+      </p>
+
+      <hr/>
+
+      <h3>💰 Ventas</h3>
+
+      <p>
+      Total vendido:
+      <b>S/ ${data.totalSales}</b>
+      </p>
+
+      <p>
+      Ventas anuladas:
+      <b>S/ ${data.cancelledSales}</b>
+      </p>
+
+
+      <h3>📦 Inventario</h3>
+
+      <p>
+      Stock disponible:
+      <b>${data.stock} unidades</b>
+      </p>
+
+
+      <h3>⚠ Alertas</h3>
+
+      <p>
+      Productos bajo stock:
+      <b>${data.lowStock}</b>
+      </p>
+
+
+      <p>
+      Productos próximos a vencer:
+      <b>${data.expiring}</b>
+      </p>
+
+
+      <br/>
+
+      <small>
+      Reporte generado automáticamente por Botica L y L
+      </small>
+
+    </div>
+    `
+  );
+
 };
